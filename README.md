@@ -1,4 +1,4 @@
-# From countries to cities: assessing climate ambition with a multi-level fair2 share allocation framework
+# From countries to cities: assessing climate ambition with a multi-level fair-share allocation framework
 
 Authors: Yann Robiou du Pont, Diego Manya, Kaihui Song,Håvard Haarstad, Angel Hsu
 
