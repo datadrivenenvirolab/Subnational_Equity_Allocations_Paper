@@ -66,7 +66,7 @@ write_parquet(POP_1970_2100, 'results/ADM1_POP_1970_2100.parquet')
 # 2. subnational historical emission dataset -----
 # final historical emission dataset : edgar_emissions_1970_2022
 # Input units: Tons
-edgar_emissions_1970_2022 <- emissions %>% filter(year > 1989)%>%
+edgar_emissions_1970_2022 <- emissions %>% filter(year > 1969)%>%
   pivot_wider(names_from = GHG, values_from = total_emissions)%>%
   mutate(total_GHG = CH4*25 + N2O*298 + CO2, .keep = 'unused')%>% 
   # mutate(total_GHG = total_GHG/(10^6))%>%
@@ -275,7 +275,6 @@ hist_emissions <- edgar_emissions_1970_2022 %>%
   mutate(emission_type = 'Historic Emissions')
 # Output: MtCO2e
 
-
 hist_proj_emission <- rbind(hist_emissions, proj_emissions)
 
 ggplot(hist_proj_emission, aes(x = year, y = emission/(10^3), color = emission_type)) +
@@ -347,19 +346,21 @@ B_global <- emiss_2020_2100 %>% filter(year > t) %>%
 Hist_global <- edgar_emissions_1970_2022 %>% ungroup() %>% 
   summarise(Hist_gvt = sum(total_GHG)) %>% pull(Hist_gvt)%>% unique()
 
-Hist_gvt_df <- edgar_emissions_1970_2022 %>% ungroup() %>% 
-  group_by(GID_1) %>% summarise(Hist_gvt = sum(total_GHG))
-
 Pop_global <- POP_1970_2100 %>% ungroup()%>%
-              summarise(Pop_global = sum(population))%>% 
-              pull(Pop_global)%>% unique()
+  summarise(Pop_global = sum(population))%>% 
+  pull(Pop_global)%>% unique()
 
-Pop_gvt_df <-  POP_1970_2100 %>% group_by(GID_1) %>% summarise(Pop_gvt = sum(population))
+## Step 1
+## Country for Responsibility
+Hist_iso_df <- edgar_emissions_1970_2022 %>% ungroup() %>% 
+  group_by(GID_0) %>% summarise(Hist_gvt = sum(total_GHG))
+
+Pop_iso_df <-  POP_1970_2100 %>% group_by(GID_0) %>% summarise(Pop_gvt = sum(population))
 
 E_global_df <- emiss_2020_2100 %>% select(year, emiss_pos_2020_2100)%>%
   filter(year > t) %>% rename(E_global = emiss_pos_2020_2100)
 
-responsability_positive_df <- Hist_gvt_df %>% left_join(Pop_gvt_df, by ='GID_1')%>%
+responsability_iso_positive_df <- Hist_iso_df %>% left_join(Pop_iso_df, by ='GID_0')%>%
   expand_grid(E_global_df)%>%
   mutate(B_global = B_global)%>%
   mutate(Hist_global = Hist_global)%>%
@@ -369,7 +370,6 @@ responsability_positive_df <- Hist_gvt_df %>% left_join(Pop_gvt_df, by ='GID_1')
   mutate(B_gvt_t1 = (E_19702100*(Pop_gvt/Pop_global)))%>%
   mutate(B_gvt = B_gvt_t1 - Hist_gvt)%>%
   mutate(E_gvt = (B_gvt/B_global)*E_global)
-
 
 ### Negative Part
 B_global <- emiss_2020_2100 %>% filter(year > t) %>%
@@ -378,19 +378,19 @@ B_global <- emiss_2020_2100 %>% filter(year > t) %>%
 
 Hist_global <- 0
 
-Hist_gvt_df <- edgar_emissions_1970_2022 %>% ungroup() %>% 
-  group_by(GID_1) %>% summarise(Hist_gvt = 0)
+Hist_iso_df <- edgar_emissions_1970_2022 %>% ungroup() %>% 
+  group_by(GID_0) %>% summarise(Hist_gvt = 0)
 
 Pop_global <- POP_1970_2100 %>% ungroup()%>%
               summarise(Pop_global = sum(population))%>% 
               pull(Pop_global)%>% unique()
 
-Pop_gvt_df <-  POP_1970_2100 %>% group_by(GID_1) %>% summarise(Pop_gvt = sum(population))
+Pop_iso_df <-  POP_1970_2100 %>% group_by(GID_0) %>% summarise(Pop_gvt = sum(population))
 
 E_global_df <- emiss_2020_2100 %>% select(year, emiss_neg_2020_2100)%>%
   filter(year > t) %>% rename(E_global = emiss_neg_2020_2100)
 
-responsability_negative_df <- Hist_gvt_df %>% left_join(Pop_gvt_df, by ='GID_1')%>%
+responsability_iso_negative_df <- Hist_iso_df %>% left_join(Pop_iso_df, by ='GID_0')%>%
   expand_grid(E_global_df)%>%
   mutate(B_global = B_global)%>%
   mutate(Hist_global = Hist_global)%>%
@@ -401,8 +401,8 @@ responsability_negative_df <- Hist_gvt_df %>% left_join(Pop_gvt_df, by ='GID_1')
   mutate(B_gvt = B_gvt_t1 - Hist_gvt)%>%
   mutate(E_gvt = (B_gvt/B_global)*E_global)
 
-resposability_full_df <- responsability_positive_df %>%
-  left_join(responsability_negative_df, by = c('GID_1', 'year'), suffix = c("_pos", "_neg"))%>%
+resposability_full_iso_df <- responsability_iso_positive_df %>%
+  left_join(responsability_iso_negative_df, by = c('GID_0', 'year'), suffix = c("_pos", "_neg"))%>%
   mutate(E_gvt_full = E_gvt_pos + E_gvt_neg)
 
 # note : historical GHG emissions in 2022: 53.3 GtCO2e; projected GHG emissions in 2022: 47.3 GtCO2e
@@ -410,26 +410,33 @@ resposability_full_df <- responsability_positive_df %>%
 (emiss_2020_2100 %>% filter(year == 2022) %>% pull(emiss_pos_2020_2100) %>% sum())/(10^3)# tCO2
 
 
-full_resp_df <- rbind(
-  edgar_emissions_1970_2022 %>% ungroup() %>% select(GID_1, year, total_GHG) %>% rename(GHG_e = total_GHG),
-  resposability_full_df %>% ungroup() %>% select(GID_1, year, E_gvt_full) %>% rename(GHG_e = E_gvt_full)
+full_resp_country_df <- rbind(
+  edgar_emissions_1970_2022 %>% ungroup() %>% group_by(GID_0, year) %>% summarise(total_GHG = sum(total_GHG)) %>%
+    select(GID_0, year, total_GHG) %>% rename(E_gvt_pos= total_GHG) %>%
+    mutate(E_gvt_neg =0),
+  resposability_full_iso_df %>% ungroup() %>% select(GID_0, year, E_gvt_pos, E_gvt_neg)
 )
 
-write_parquet(full_resp_df, 'results/ADM1_fairshare_resp_emissions_1970_2100_LD15deg.parquet')
+write_parquet(full_resp_country_df %>%
+                mutate(E_gvt_full = E_gvt_pos + E_gvt_neg), 'results/ISO_fairshare_resp_emissions_1970_2100_LD15deg.parquet')
 
-gap_resp <- full_resp_df %>% filter(year %in% c('2022', '2023'))%>%
-  arrange(GID_1,year)%>%
-  group_by(GID_1)%>%
-  mutate(gap_E_gvt = GHG_e - lag(GHG_e))
 
-write_parquet(gap_resp, 'results/ADM1_fairshare_resp_gap_2022_2023_LD15deg.parquet')
+gap_iso_resp <- full_resp_country_df %>% filter(year %in% c('2022', '2023'))%>%
+  mutate(E_gvt_full = E_gvt_pos + E_gvt_neg)%>%
+  arrange(GID_0,year)%>%
+  group_by(GID_0)%>%
+  mutate(gap_E_gvt = E_gvt_full - lag(E_gvt_full))
 
-gap_resp_2030 <- full_resp_df %>% filter(year %in% c('2022', '2030'))%>%
-  arrange(GID_1,year)%>%
-  group_by(GID_1)%>%
-  mutate(gap_E_gvt = GHG_e - lag(GHG_e))
+write_parquet(gap_iso_resp, 'results/ISO_fairshare_resp_gap_2022_2023_LD15deg.parquet')
 
-write_parquet(gap_resp_2030, 'results/ADM1_fairshare_resp_gap_2022_2030_LD15deg.parquet')
+gap_iso_resp_2030 <- full_resp_country_df %>% filter(year %in% c('2022', '2030'))%>%
+  mutate(E_gvt_full = E_gvt_pos + E_gvt_neg)%>%
+  arrange(GID_0,year)%>%
+  group_by(GID_0)%>%
+  mutate(gap_E_gvt = E_gvt_full - lag(E_gvt_full))
+
+write_parquet(gap_iso_resp_2030, 'results/ISO_fairshare_resp_gap_2022_2030_LD15deg.parquet')
+write_csv(gap_iso_resp_2030, 'results/ISO_fairshare_resp_gap_2022_2030_LD15deg.csv')
 
 
 # 4.1 Capacity Approach
@@ -440,16 +447,16 @@ B_positive_global <- emiss_2020_2100 %>% filter(year > t) %>%
   group_by(year)%>% summarise(B_global = sum(emiss_pos_2020_2100))
 # in MtCO2e
 
-Pop_gvt_df <-  POP_1970_2100  %>% filter(population_year > t) %>% 
+Pop_iso_df <-  POP_1970_2100  %>% filter(population_year > t) %>% 
   group_by(GID_0, population_year)%>% summarise(Pop_gvt = sum(population)) %>%
   rename(year = population_year)%>% ungroup()
 
-GDP_gvt_df <-  GDP_1970_2100_raw %>% filter(gdp_year > t)%>% 
+GDP_iso_df <-  GDP_1970_2100_raw %>% filter(gdp_year > t)%>% 
   group_by(GID_0, gdp_year) %>% summarise(GDP_gvt = sum(gdp)) %>%
   rename(year = gdp_year)%>%  ungroup()
 
-capacity_positive_country_df <- Pop_gvt_df %>% 
-  left_join(GDP_gvt_df, by= c('GID_0', 'year'))%>%
+capacity_positive_country_df <- Pop_iso_df %>% 
+  left_join(GDP_iso_df, by= c('GID_0', 'year'))%>%
   left_join(B_positive_global, by= c('year'))%>%
   filter(GDP_gvt != 0)%>%
   mutate(POP2_GDP = Pop_gvt^2/GDP_gvt)%>%
@@ -460,8 +467,8 @@ capacity_positive_country_df <- Pop_gvt_df %>%
 B_negative_global <- emiss_2020_2100 %>% filter(year > t) %>%
   group_by(year)%>% summarise(B_global = sum(emiss_neg_2020_2100))
 
-capacity_negative_country_df <- Pop_gvt_df %>% 
-  left_join(GDP_gvt_df, by= c('GID_0', 'year'))%>%
+capacity_negative_country_df <- Pop_iso_df %>% 
+  left_join(GDP_iso_df, by= c('GID_0', 'year'))%>%
   left_join(B_negative_global, by= c('year'))%>%
   filter(GDP_gvt != 0)%>%
   group_by(year)%>%
@@ -473,27 +480,50 @@ capacity_country_full_df <- capacity_positive_country_df %>%
   mutate(E_country_full = E_country_pos + E_country_neg)
 
 full_capacity_country_df <- rbind(
-  edgar_emissions_1970_2022 %>% ungroup() %>% group_by(GID_0, year) %>% summarise(total_GHG = sum(total_GHG)) %>% rename(GHG_e = total_GHG),
-  capacity_country_full_df  %>% ungroup() %>% select(GID_0, year, E_country_full) %>% rename(GHG_e = E_country_full)
+  edgar_emissions_1970_2022 %>% ungroup() %>% group_by(GID_0, year) %>% 
+    summarise(total_GHG = sum(total_GHG)) %>% rename(E_country_pos = total_GHG) %>%
+    mutate(E_country_neg = 0),
+  capacity_country_full_df  %>% ungroup() %>% select(GID_0, year, E_country_pos, E_country_neg)
 )
 
+write_parquet(full_capacity_country_df %>%
+                mutate(E_country_full = E_country_pos + E_country_neg), 'results/ISO_fairshare_capc_emissions_1970_2100_LD15deg.parquet')
+
+### Country gap
+
 gap_capacity_country <- full_capacity_country_df %>% filter(year %in% c('2022', '2023'))%>%
+  mutate(E_country_full = E_country_pos + E_country_neg)%>%
   arrange(GID_0,year)%>%
   group_by(GID_0)%>%
-  mutate(gap_E_gvt = GHG_e - lag(GHG_e))
+  mutate(gap_E_gvt = E_country_full - lag(E_country_full))
 
-write_parquet(gap_capacity_country, 'results/ADM1_fairshare_capacity_country_gap_2022_2023_LD15deg.parquet')
+write_parquet(gap_capacity_country, 'results/ISO_fairshare_capacity_country_gap_2022_2023_LD15deg.parquet')
 
 gap_capacity_country_2030 <- full_capacity_country_df %>% filter(year %in% c('2022', '2030'))%>%
+  mutate(E_country_full = E_country_pos + E_country_neg)%>%
   arrange(GID_0,year)%>%
   group_by(GID_0)%>%
-  mutate(gap_E_gvt = GHG_e - lag(GHG_e))
+  mutate(gap_E_gvt = E_country_full - lag(E_country_full))
 
-write_parquet(gap_capacity_country_2030, 'results/ADM1_fairshare_capacity_country_gap_2022_2030_LD15deg.parquet')
+write_parquet(gap_capacity_country_2030, 'results/ISO_fairshare_capacity_country_gap_2022_2030_LD15deg.parquet')
+write_csv(gap_capacity_country_2030, 'results/ISO_fairshare_capacity_country_gap_2022_2030_LD15deg.csv')
+
+
+## Joining both
+full_resp_capc_country_df<-full_capacity_country_df %>%
+  rename_with(~paste0(., "_capc"), -c(GID_0, year))%>%
+  left_join(full_resp_country_df %>% rename_with(~paste0(., "_resp"), -c(GID_0, year)), by = c("GID_0", "year"), suffix = c("_capc", "_resp"))%>%
+  # mutate(E_country_pos = (E_country_pos_capc + E_gvt_pos_resp)/2)%>%
+  # mutate(E_country_neg = (E_country_neg_capc + E_gvt_neg_resp)/2)
+  mutate(E_country_resp = E_gvt_pos_resp + E_gvt_neg_resp,
+         E_country_capc = E_country_pos_capc + E_country_neg_capc)%>%
+  mutate(E_country_avg = (E_country_resp + E_country_capc)/2)%>%
+  mutate(E_country_pos = ifelse(E_country_avg >0, E_country_avg, 0))%>%
+  mutate(E_country_neg = ifelse(E_country_avg <0, E_country_avg, 0))
 
 
 ## Step 2 Regions
-B_positive_country <- capacity_country_full_df %>% select(GID_0, year, E_country_pos)
+B_positive_country <- full_resp_capc_country_df %>% select(GID_0, year, E_country_pos)
 # in MtCO2e
 
 Pop_gvt_df <-  POP_1970_2100  %>% filter(population_year > t) %>% 
@@ -513,7 +543,7 @@ capacity_positive_region_df <- Pop_gvt_df %>%
   mutate(Sum_POP2_GDP = sum(Pop_gvt^2/GDP_gvt))%>%
   mutate(E_gvt = E_country_pos*POP2_GDP/Sum_POP2_GDP)
 
-B_negative_country <- capacity_country_full_df %>% select(GID_0, year, E_country_neg)
+B_negative_country <- full_resp_capc_country_df %>% select(GID_0, year, E_country_neg)
 
 capacity_negative_region_df <- Pop_gvt_df %>% 
   left_join(GDP_gvt_df, by= c('GID_0', 'GID_1', 'year'))%>%
@@ -536,6 +566,8 @@ full_capacity_region_df <- rbind(
 
 write_parquet(full_capacity_region_df, 'results/ADM1_fairshare_capacity_region_emissions_1970_2100_LD15deg.parquet')
 
+## Gap Capacity - Regional
+
 gap_capacity <- full_capacity_region_df %>% filter(year %in% c('2022', '2023'))%>%
   arrange(GID_1,year)%>%
   group_by(GID_1)%>%
@@ -553,7 +585,7 @@ write_parquet(gap_capacity_2030, 'results/ADM1_fairshare_capacity_region_gap_202
 
 ## Target data
 ## baseline units input: tCO2e
-gca_targets_regions_focus <- rbind(
+gca_targets_regions_focus_og <- rbind(
   read_csv("data/target_region_focus.csv")
 )%>%
   select(GDAM_id, name, iso, baseline_value, baseline_year, target_value, target_year)%>%
@@ -561,6 +593,18 @@ gca_targets_regions_focus <- rbind(
   mutate(GHG_self = baseline_value - ((target_value/100)*baseline_value))%>%
   mutate(GHG_self = case_when(target_value == 100 ~ 0,
                               TRUE ~ GHG_self))
+
+gca_targets_regions_focus <- rbind(
+  read_csv("data/target_region_focus.csv")
+)%>%
+  select(GDAM_id, name, iso, baseline_year, target_value, target_year)%>%
+  left_join(edgar_emissions_1970_2022, by = c('baseline_year'='year', 'GDAM_id'='GID_1'))%>%
+  rename(baseline_value = total_GHG)%>%
+  mutate(baseline_value = baseline_value*(10^6))%>%
+  mutate(GHG_self = baseline_value - ((target_value/100)*baseline_value))%>%
+  mutate(GHG_self = case_when(target_value == 100 ~ 0,
+                              TRUE ~ GHG_self))
+
 #output: t CO2e
 gca_targets_df <- rbind(gca_targets_regions_focus %>% select(GDAM_id, name, iso, baseline_value, baseline_year)%>%
                           rename(year = baseline_year, GHG_self = baseline_value),
@@ -577,7 +621,7 @@ iso_lby <- data.frame(
   iso = 'LBY'
 )%>% mutate(GHG_self = GHG_self*(10^6))
 
-gca_targets_country <- read_csv("data/ndc_final_exclude_hotair.csv") %>% 
+gca_targets_country_og <- read_csv("data/ndc_final_exclude_hotair.csv") %>% 
   filter(columns.category == "Current")%>%
   rename(iso = columns.region, GHG_self_raw = value)%>%
   select(iso, year, GHG_self_raw, columns.ambition)%>%
@@ -586,6 +630,24 @@ gca_targets_country <- read_csv("data/ndc_final_exclude_hotair.csv") %>%
   mutate(GHG_self = mean(GHG_self_raw)*(10^6))%>%
   select(iso, year, GHG_self)%>% distinct()%>%
   rbind(iso_lby)
+
+gca_targets_country <- read_csv("data/ndc_final_exclude_hotair.csv")%>% 
+  filter(columns.category == "Current")%>%
+  rename(iso = columns.region, GHG_self_raw = value)%>%
+  select(iso, year, GHG_self_raw, columns.ambition)%>%
+  filter(!is.na(GHG_self_raw))%>%
+  group_by(iso, year)%>%
+  mutate(GHG_self = mean(GHG_self_raw)*(10^6))%>%
+  select(iso, year, GHG_self)%>% distinct()%>%
+  rbind(iso_lby)%>%
+  left_join(edgar_emissions_1970_2022 %>% ungroup() %>% 
+              group_by(GID_0, year) %>% summarise(GHG_edgar = sum(total_GHG)*(10^6)), by = c('year', 'iso'='GID_0'))%>%
+  group_by(iso) %>%
+  mutate(cor_factor = GHG_self[year == min(year)] / GHG_edgar[year == min(year)])%>%
+  mutate(GHG_self_og = GHG_self)%>%
+  mutate(GHG_self = GHG_self_og/cor_factor)%>%
+  select(iso, year, GHG_self)
+
 #output: T CO2e
 #
 write_parquet(gca_targets_country, 'results/ndc_targets_prio_country.parquet')
